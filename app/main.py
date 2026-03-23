@@ -7,8 +7,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from . import models
-from .database import engine, get_db
+from .database import engine, get_db, SessionLocal
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -53,21 +55,34 @@ def test_posts(db: Session = Depends(get_db)):
 
     posts = db.query(models.Post).all()
     print(posts)
-    return {"data": posts}
+    return {"data": "Successfull"}
 
 @app.get("/posts")
-def get_post():
-    cursor.execute("""SELECT * FROM posts""")
-    posts = cursor.fetchall()
-    print(posts)
+def get_post(db: Session = Depends(get_db)):
+    # cursor.execute("""SELECT * FROM posts""")
+    # posts = cursor.fetchall()
+    # print(posts)
+    posts = db.query(models.Post).all()
     return {"data": posts}
 
 @app.post("/posts", status_code=status.HTTP_201_CREATED)
-def create_posts(post: Post):
-    cursor.execute("""INSERT INTO posts (title, content, published) VALUES(%s, %s, %s) RETURNING * """,
-                   (post.title, post.content, post.published))
-    new_post = cursor.fetchone()
-    conn.commit()
+def create_posts(post: Post, db: Session = Depends(get_db)):
+    # cursor.execute("""INSERT INTO posts (title, content, published) VALUES(%s, %s, %s) RETURNING * """,
+    #                (post.title, post.content, post.published))
+    # new_post = cursor.fetchone()
+    # conn.commit()
+    new_post = models.Post(title=post.title, content=post.content, published=post.published)
+    db.add(new_post)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        sync_posts_id_sequence()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Post id sequence was out of sync with the database. Please retry the request.",
+        )
+    db.refresh(new_post)
     return {"data": new_post}
 
 @app.get("/posts/{id}")
