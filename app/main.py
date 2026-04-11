@@ -121,3 +121,19 @@ def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends
     db.commit()
 
     return post_query.first()
+
+@app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.UserOut)
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    new_user = models.User(**user.dict())
+    db.add(new_user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        sync_posts_id_sequence()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Post id sequence was out of sync with the database. Please retry the request.",
+        )
+    db.refresh(new_user)
+    return  new_user
