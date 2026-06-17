@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, status, HTTPException, Depends
 from fastapi.params import Body
 from pydantic import BaseModel
+from passlib.context import CryptContext
 from typing import Optional, List
 from random import randrange
 import psycopg2
@@ -12,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from . import models, schemas
 from .database import engine, get_db, SessionLocal
 
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -124,16 +126,26 @@ def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends
 
 @app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.UserOut)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+
+    #hash the password - user.password
+    hashed_password = pwd_context.hash(user.password)
+    user.password = hashed_password
     new_user = models.User(**user.dict())
     db.add(new_user)
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        sync_posts_id_sequence()
+        if "uers_email_key" in str(e.orig):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Post id sequence was out of sync with the database. Please retry the request.",
+            detail="Could not create user due to a database constraint.",
         )
     db.refresh(new_user)
     return  new_user
+
+    
