@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from . import models, schemas, utils
 from .database import engine, get_db, SessionLocal
-from .routers import post, users
+from .routers import post, users, auth
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -48,6 +48,7 @@ def find_index_post(id):
         
 app.include_router(post.router)
 app.include_router(users.router)
+app.include_router(auth.router)
 
 @app.get("/")
 def root():
